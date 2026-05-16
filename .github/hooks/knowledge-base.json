@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "node ./scripts/copilot-hooks/knowledge-base-check.mjs",
+        "timeout": 10
+      }
+    ]
+  }
+}

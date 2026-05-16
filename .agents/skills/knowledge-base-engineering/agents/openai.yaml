@@ -1,0 +1,7 @@
+interface:
+  display_name: "Knowledge Base Engineering"
+  short_description: "Document bugs, ADRs, incidents, and fixes"
+  default_prompt: "Use $knowledge-base-engineering to capture the engineering context for this bug, incident, ADR, or behavior-changing fix in docs/."
+
+policy:
+  allow_implicit_invocation: true
