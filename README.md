@@ -89,7 +89,7 @@ cargo run --bin logtool -- pretty --level error --lines 20
 ```
 
 ## Configuration
-Main environment variables are defined in [.env.example](/Users/un/Documents/workshop/rust-api-starter/.env.example):
+Main environment variables are defined in [.env.example](.env.example):
 - `DATABASE_URL`
 - `JWT_SECRET`
 - `JWT_EXPIRES_IN`
@@ -103,14 +103,14 @@ Main environment variables are defined in [.env.example](/Users/un/Documents/wor
 - `SERVER_PORT`
 
 ## Documentation And Knowledge Base
-Repository documentation lives in [docs/README.md](/Users/un/Documents/workshop/rust-api-starter/docs/README.md).
+Repository documentation lives in [docs/README.md](docs/README.md).
 
 Recommended reading order for new engineers:
-1. [System Overview](/Users/un/Documents/workshop/rust-api-starter/docs/architecture/system-overview.md)
-2. [Data Flow](/Users/un/Documents/workshop/rust-api-starter/docs/architecture/data-flow.md)
-3. [Module Map](/Users/un/Documents/workshop/rust-api-starter/docs/architecture/module-map.md)
-4. [ADRs](/Users/un/Documents/workshop/rust-api-starter/docs/adr/README.md)
-5. [Runbooks](/Users/un/Documents/workshop/rust-api-starter/docs/runbooks/README.md)
+1. [System Overview](docs/architecture/system-overview.md)
+2. [Data Flow](docs/architecture/data-flow.md)
+3. [Module Map](docs/architecture/module-map.md)
+4. [ADRs](docs/adr/README.md)
+5. [Runbooks](docs/runbooks/README.md)
 
 Use `docs/` for:
 - architecture decisions
