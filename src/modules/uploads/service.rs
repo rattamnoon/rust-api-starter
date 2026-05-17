@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use crate::{
     errors::app_error::AppError,
+    modules::jobs::service::JobService,
     modules::uploads::{
         dto::{UploadFileRequest, UploadFileResponse},
         model::UploadedFile,
@@ -19,13 +20,19 @@ const MAX_UPLOAD_SIZE_BYTES: usize = 10 * 1024 * 1024;
 pub struct UploadService {
     repository: UploadRepository,
     file_storage: LocalFileStorage,
+    job_service: JobService,
 }
 
 impl UploadService {
-    pub fn new(repository: UploadRepository, file_storage: LocalFileStorage) -> Self {
+    pub fn new(
+        repository: UploadRepository,
+        file_storage: LocalFileStorage,
+        job_service: JobService,
+    ) -> Self {
         Self {
             repository,
             file_storage,
+            job_service,
         }
     }
 
@@ -79,6 +86,10 @@ impl UploadService {
             }
         };
 
+        self.job_service
+            .enqueue_uploaded_file_processing(&model)
+            .await?;
+
         Ok(UploadFileResponse::from_model(model))
     }
 
@@ -104,6 +115,13 @@ impl UploadService {
         }
 
         Ok(model)
+    }
+
+    pub async fn find_by_id(&self, upload_id: Uuid) -> Result<UploadedFile, AppError> {
+        self.repository
+            .find_by_id(upload_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("file was not found".into()))
     }
 }
 

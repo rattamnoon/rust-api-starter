@@ -25,8 +25,14 @@ pub enum AppError {
     Database(#[from] sqlx::Error),
     #[error("token error")]
     Jwt(#[from] jsonwebtoken::errors::Error),
+    #[error("queue error")]
+    Queue(#[from] lapin::Error),
+    #[error("http client error")]
+    Http(#[from] reqwest::Error),
     #[error("{0}")]
     PasswordHash(String),
+    #[error("io error")]
+    Io(#[from] std::io::Error),
     #[error("{0}")]
     Internal(String),
 }
@@ -43,7 +49,10 @@ impl AppError {
             Self::Config(_) => "config_error",
             Self::Database(_) => "database_error",
             Self::Jwt(_) => "token_error",
+            Self::Queue(_) => "queue_error",
+            Self::Http(_) => "http_error",
             Self::PasswordHash(_) => "password_error",
+            Self::Io(_) => "io_error",
             Self::Internal(_) => "internal_error",
         }
     }
@@ -64,9 +73,13 @@ impl ResponseError for AppError {
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::Conflict(_) => StatusCode::CONFLICT,
-            Self::Config(_) | Self::Database(_) | Self::PasswordHash(_) | Self::Internal(_) => {
-                StatusCode::INTERNAL_SERVER_ERROR
-            }
+            Self::Config(_)
+            | Self::Database(_)
+            | Self::Queue(_)
+            | Self::Http(_)
+            | Self::PasswordHash(_)
+            | Self::Io(_)
+            | Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 

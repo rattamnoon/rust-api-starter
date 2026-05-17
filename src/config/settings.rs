@@ -5,9 +5,26 @@ use crate::errors::app_error::AppError;
 #[derive(Clone, Debug)]
 pub struct Settings {
     pub database_url: String,
+    pub rabbitmq_url: String,
+    pub rabbitmq_queue_name: String,
+    pub rabbitmq_dead_letter_queue: String,
+    pub worker_concurrency: u16,
+    pub job_max_retries: i32,
     pub jwt_secret: String,
     pub jwt_expires_in: i64,
     pub jwt_refresh_expires_in: i64,
+    pub public_base_url: String,
+    pub stripe_secret_key: String,
+    pub stripe_webhook_secret: String,
+    pub stripe_success_url: String,
+    pub stripe_cancel_url: String,
+    pub email_provider: String,
+    pub email_from: String,
+    pub resend_api_key: String,
+    pub temporal_server_url: String,
+    pub temporal_namespace: String,
+    pub temporal_task_queue: String,
+    pub receipt_prefix: String,
     pub log_dir: String,
     pub upload_dir: String,
     pub rate_limit_requests: usize,
@@ -21,6 +38,11 @@ impl Settings {
     pub fn from_env() -> Result<Self, AppError> {
         Ok(Self {
             database_url: read_required("DATABASE_URL")?,
+            rabbitmq_url: read_required("RABBITMQ_URL")?,
+            rabbitmq_queue_name: read_optional("RABBITMQ_QUEUE_NAME", "jobs"),
+            rabbitmq_dead_letter_queue: read_optional("RABBITMQ_DEAD_LETTER_QUEUE", "jobs.dead"),
+            worker_concurrency: read_optional_parse("WORKER_CONCURRENCY", 8)?,
+            job_max_retries: read_optional_parse("JOB_MAX_RETRIES", 3)?,
             jwt_secret: read_required("JWT_SECRET")?,
             jwt_expires_in: read_required("JWT_EXPIRES_IN")?
                 .parse()
@@ -28,6 +50,24 @@ impl Settings {
             jwt_refresh_expires_in: read_required("JWT_REFRESH_EXPIRES_IN")?.parse().map_err(
                 |_| AppError::Config("JWT_REFRESH_EXPIRES_IN must be a valid integer".into()),
             )?,
+            public_base_url: read_optional("PUBLIC_BASE_URL", "http://127.0.0.1:8080"),
+            stripe_secret_key: read_optional("STRIPE_SECRET_KEY", ""),
+            stripe_webhook_secret: read_optional("STRIPE_WEBHOOK_SECRET", ""),
+            stripe_success_url: read_optional(
+                "STRIPE_SUCCESS_URL",
+                "http://127.0.0.1:8080/api/v1/orders/success",
+            ),
+            stripe_cancel_url: read_optional(
+                "STRIPE_CANCEL_URL",
+                "http://127.0.0.1:8080/api/v1/orders/cancel",
+            ),
+            email_provider: read_optional("EMAIL_PROVIDER", "log"),
+            email_from: read_optional("EMAIL_FROM", "noreply@example.com"),
+            resend_api_key: read_optional("RESEND_API_KEY", ""),
+            temporal_server_url: read_optional("TEMPORAL_SERVER_URL", "http://temporal:7233"),
+            temporal_namespace: read_optional("TEMPORAL_NAMESPACE", "default"),
+            temporal_task_queue: read_optional("TEMPORAL_TASK_QUEUE", "commerce"),
+            receipt_prefix: read_optional("RECEIPT_PREFIX", "RCT"),
             log_dir: read_optional("LOG_DIR", "./logs"),
             upload_dir: read_optional("UPLOAD_DIR", "./uploads"),
             rate_limit_requests: read_optional_parse("RATE_LIMIT_REQUESTS", 60)?,

@@ -8,6 +8,7 @@ use crate::{
             dto::{AuthResponse, LoginRequest, RefreshTokenRequest, RegisterRequest},
             repository::AuthRepository,
         },
+        jobs::service::JobService,
         users::dto::UserResponse,
     },
     shared::{
@@ -21,6 +22,7 @@ use crate::{
 #[derive(Clone)]
 pub struct AuthService {
     repository: AuthRepository,
+    job_service: JobService,
     password_service: PasswordService,
     jwt_service: JwtService,
 }
@@ -28,11 +30,13 @@ pub struct AuthService {
 impl AuthService {
     pub fn new(
         repository: AuthRepository,
+        job_service: JobService,
         password_service: PasswordService,
         jwt_service: JwtService,
     ) -> Self {
         Self {
             repository,
+            job_service,
             password_service,
             jwt_service,
         }
@@ -57,6 +61,11 @@ impl AuthService {
                 &request.name,
                 UserRole::User,
             )
+            .await?;
+
+        let _ = self
+            .job_service
+            .enqueue_welcome_email(&user, Some(user.id))
             .await?;
 
         self.issue_tokens(user).await

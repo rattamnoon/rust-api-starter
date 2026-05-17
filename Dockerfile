@@ -12,7 +12,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY migrations ./migrations
 COPY src ./src
 
-RUN cargo build --release --bin rust-api-starter
+RUN cargo build --release --bin rust-api-starter --bin worker
 
 FROM debian:bookworm-slim AS runtime
 
@@ -31,6 +31,7 @@ RUN apt-get update \
 WORKDIR ${APP_HOME}
 
 COPY --from=builder /app/target/release/rust-api-starter ./rust-api-starter
+COPY --from=builder /app/target/release/worker ./worker
 
 RUN mkdir -p "${LOG_DIR}" "${UPLOAD_DIR}" \
     && chown -R app:app "${APP_HOME}"

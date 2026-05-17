@@ -22,7 +22,9 @@ async fn main() -> io::Result<()> {
         .map_err(io::Error::other)?;
 
     let bind_address = format!("{}:{}", settings.server_host, settings.server_port);
-    let state = AppState::new(settings.clone(), pool);
+    let state = AppState::new(settings.clone(), pool)
+        .await
+        .map_err(io::Error::other)?;
 
     tracing::info!("starting server at http://{bind_address}");
 

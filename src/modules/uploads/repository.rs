@@ -63,4 +63,15 @@ impl UploadRepository {
         .fetch_optional(&self.pool)
         .await
     }
+
+    pub async fn find_by_id(&self, upload_id: Uuid) -> Result<Option<UploadedFile>, sqlx::Error> {
+        sqlx::query_as::<_, UploadedFile>(
+            "SELECT id, sub_folder, original_filename, stored_filename, content_type, size_bytes, storage_path, uploaded_by, created_at
+             FROM uploaded_files
+             WHERE id = $1",
+        )
+        .bind(upload_id)
+        .fetch_optional(&self.pool)
+        .await
+    }
 }
