@@ -65,8 +65,10 @@ docker build -t rust-api-starter .
 
 Run the development stack with hot-reload:
 ```bash
-docker compose -f docker-compose.yml -f compose.override.yml up --build
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```
+
+`docker compose up -d --build` now starts the normal runtime stack only. The dev hot-reload file is no longer auto-loaded.
 
 Run only the application container against an existing PostgreSQL instance:
 ```bash
