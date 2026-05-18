@@ -130,7 +130,10 @@ impl ProductRepository {
             " RETURNING id, sku, name, description, price_amount, currency, is_active, created_at, updated_at",
         );
 
-        builder.build_query_as::<Product>().fetch_optional(&self.pool).await
+        builder
+            .build_query_as::<Product>()
+            .fetch_optional(&self.pool)
+            .await
     }
 
     pub async fn delete(&self, id: Uuid) -> Result<bool, sqlx::Error> {

@@ -24,7 +24,10 @@ pub fn render_receipt_pdf(input: &ReceiptPdfInput<'_>) -> Vec<u8> {
         "Receipt".to_string(),
         format!("Receipt Number: {}", input.receipt_number),
         format!("Issued At: {}", input.issued_at.to_rfc3339()),
-        format!("Customer: {} <{}>", input.customer_name, input.customer_email),
+        format!(
+            "Customer: {} <{}>",
+            input.customer_name, input.customer_email
+        ),
         format!("Order ID: {}", input.order_id),
         format!("Currency: {}", input.currency.to_uppercase()),
         String::new(),

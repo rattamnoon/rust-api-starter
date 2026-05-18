@@ -4,6 +4,7 @@ use crate::{
     config::settings::Settings,
     modules::{
         auth::{repository::AuthRepository, service::AuthService},
+        events::{repository::EventRepository, service::EventService},
         jobs::{repository::JobRepository, service::JobService},
         orders::{repository::OrderRepository, service::OrderService},
         payments::{repository::PaymentRepository, service::PaymentService},
@@ -15,7 +16,6 @@ use crate::{
     shared::{
         email::EmailService, file_storage::LocalFileStorage, jwt::JwtService,
         password::PasswordService, queue::RabbitMqClient, rate_limit::RateLimiter,
-        temporal::TemporalCommerceService,
     },
 };
 
@@ -23,6 +23,7 @@ use crate::{
 pub struct AppState {
     pub jwt_service: JwtService,
     pub auth_service: AuthService,
+    pub event_service: EventService,
     pub job_service: JobService,
     pub order_service: OrderService,
     pub payment_service: PaymentService,
@@ -50,6 +51,7 @@ impl AppState {
         );
 
         let auth_repository = AuthRepository::new(db.clone());
+        let event_repository = EventRepository::new(db.clone());
         let job_repository = JobRepository::new(db.clone());
         let order_repository = OrderRepository::new(db.clone());
         let payment_repository = PaymentRepository::new(db.clone());
@@ -65,19 +67,27 @@ impl AppState {
             &settings.rabbitmq_dead_letter_queue,
         )
         .await?;
-
         let job_service = JobService::new(job_repository, queue.clone(), settings.job_max_retries);
+        let event_service = EventService::new(&settings, event_repository);
         let auth_service = AuthService::new(
             auth_repository,
+            event_service.clone(),
             job_service.clone(),
             password_service.clone(),
             jwt_service.clone(),
         );
-        let upload_service =
-            UploadService::new(upload_repository.clone(), file_storage.clone(), job_service.clone());
+        let upload_service = UploadService::new(
+            upload_repository.clone(),
+            file_storage.clone(),
+            job_service.clone(),
+        );
         let user_service = UserService::new(user_repository.clone(), password_service);
         let product_service = ProductService::new(product_repository.clone());
-        let order_service = OrderService::new(order_repository.clone(), product_repository);
+        let order_service = OrderService::new(
+            order_repository.clone(),
+            product_repository,
+            event_service.clone(),
+        );
         let receipt_service = ReceiptService::new(
             settings.clone(),
             receipt_repository,
@@ -85,24 +95,21 @@ impl AppState {
             upload_repository,
             user_repository,
             email_service,
+            event_service.clone(),
             file_storage,
-        );
-        let temporal_service = TemporalCommerceService::new(
-            &settings,
-            order_repository.clone(),
-            payment_repository.clone(),
-            receipt_service.clone(),
         );
         let payment_service = PaymentService::new(
             settings.clone(),
             order_repository,
             payment_repository,
-            temporal_service,
+            job_service.clone(),
+            event_service.clone(),
         );
 
         Ok(Self {
             jwt_service,
             auth_service,
+            event_service,
             job_service,
             order_service,
             payment_service,

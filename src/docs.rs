@@ -5,7 +5,7 @@ use utoipa::{
 
 use crate::{
     app,
-    modules::{auth, jobs, orders, payments, products, receipts, uploads, users},
+    modules::{auth, events, jobs, orders, payments, products, receipts, uploads, users},
     shared::response::{ErrorDetails, ErrorResponseBody, HealthResponse},
 };
 
@@ -18,6 +18,8 @@ use crate::{
         auth::handler::refresh,
         auth::handler::logout,
         auth::handler::me,
+        events::handler::list_events,
+        events::handler::get_event,
         jobs::handler::list_jobs,
         jobs::handler::get_job,
         jobs::handler::retry_job,
@@ -51,6 +53,10 @@ use crate::{
             auth::dto::LoginRequest,
             auth::dto::RefreshTokenRequest,
             auth::dto::AuthResponse,
+            events::dto::EventsQuery,
+            events::dto::EventResponse,
+            events::dto::EventsListResponse,
+            events::model::EventPublishStatus,
             jobs::dto::JobsQuery,
             jobs::dto::JobResponse,
             jobs::dto::JobAttemptResponse,
@@ -93,6 +99,7 @@ use crate::{
     tags(
         (name = "Health", description = "Health check endpoints"),
         (name = "Auth", description = "Authentication and current-user endpoints"),
+        (name = "Events", description = "Kafka outbox and publish-status endpoints"),
         (name = "Jobs", description = "Background job and chart endpoints"),
         (name = "Orders", description = "Order creation and lookup endpoints"),
         (name = "Payments", description = "Stripe checkout and webhook endpoints"),

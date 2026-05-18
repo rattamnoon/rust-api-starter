@@ -5,7 +5,7 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use crate::{
     docs::ApiDoc,
-    modules::{auth, jobs, orders, payments, products, receipts, uploads, users},
+    modules::{auth, events, jobs, orders, payments, products, receipts, uploads, users},
     shared::metrics,
     shared::response::HealthResponse,
 };
@@ -15,6 +15,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         web::scope("/api/v1")
             .route("/health", web::get().to(health))
             .service(auth::routes::scope())
+            .service(events::routes::scope())
             .service(jobs::routes::scope())
             .service(orders::routes::scope())
             .service(payments::routes::scope())

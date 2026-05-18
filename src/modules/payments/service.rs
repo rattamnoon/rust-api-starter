@@ -11,6 +11,8 @@ use crate::{
     config::settings::Settings,
     errors::app_error::AppError,
     modules::{
+        events::service::EventService,
+        jobs::service::JobService,
         orders::{
             dto::OrderResponse,
             model::{Order, OrderStatus},
@@ -22,7 +24,7 @@ use crate::{
             repository::{NewPayment, PaymentRepository},
         },
     },
-    shared::{extractor::AuthenticatedUser, temporal::TemporalCommerceService, types::UserRole},
+    shared::{extractor::AuthenticatedUser, types::UserRole},
 };
 
 type HmacSha256 = Hmac<Sha256>;
@@ -32,7 +34,8 @@ pub struct PaymentService {
     settings: Settings,
     order_repository: OrderRepository,
     payment_repository: PaymentRepository,
-    temporal_service: TemporalCommerceService,
+    job_service: JobService,
+    event_service: EventService,
     client: reqwest::Client,
 }
 
@@ -71,13 +74,15 @@ impl PaymentService {
         settings: Settings,
         order_repository: OrderRepository,
         payment_repository: PaymentRepository,
-        temporal_service: TemporalCommerceService,
+        job_service: JobService,
+        event_service: EventService,
     ) -> Self {
         Self {
             settings,
             order_repository,
             payment_repository,
-            temporal_service,
+            job_service,
+            event_service,
             client: reqwest::Client::new(),
         }
     }
@@ -117,10 +122,7 @@ impl PaymentService {
                     .cancel_url
                     .unwrap_or_else(|| self.settings.stripe_cancel_url.clone()),
             ),
-            (
-                "metadata[order_id]".to_string(),
-                order.id.to_string(),
-            ),
+            ("metadata[order_id]".to_string(), order.id.to_string()),
         ];
 
         for (index, item) in items.iter().enumerate() {
@@ -214,7 +216,8 @@ impl PaymentService {
         if !inserted {
             return Ok(PaymentWebhookAcceptedResponse {
                 accepted: true,
-                workflow_id: None,
+                job_id: None,
+                published_event_types: Vec::new(),
                 status: None,
             });
         }
@@ -222,7 +225,8 @@ impl PaymentService {
         if event.event_type != "checkout.session.completed" {
             return Ok(PaymentWebhookAcceptedResponse {
                 accepted: true,
-                workflow_id: None,
+                job_id: None,
+                published_event_types: Vec::new(),
                 status: None,
             });
         }
@@ -256,11 +260,7 @@ impl PaymentService {
                 provider_payment_id: event.data.object.payment_intent.clone(),
                 provider_session_id: Some(event.data.object.id.clone()),
                 status: payment_status.as_str().to_string(),
-                amount: event
-                    .data
-                    .object
-                    .amount_total
-                    .unwrap_or(order.total_amount),
+                amount: event.data.object.amount_total.unwrap_or(order.total_amount),
                 currency: event
                     .data
                     .object
@@ -278,19 +278,30 @@ impl PaymentService {
                 .await?;
         }
 
-        let workflow_id = if payment_status == PaymentStatus::Succeeded {
-            Some(
-                self.temporal_service
-                    .process_paid_order(order_id, &event.id)
-                    .await?,
-            )
+        let (job_id, published_event_types) = if payment_status == PaymentStatus::Succeeded {
+            self.order_repository.mark_paid(order_id).await?;
+            let paid_order = self
+                .order_repository
+                .find_by_id(order_id)
+                .await?
+                .ok_or_else(|| AppError::NotFound("order was not found".into()))?;
+            let published_event_type = self
+                .event_service
+                .record_order_paid(&paid_order, event.data.object.payment_intent.as_deref())
+                .await?;
+            let job = self
+                .job_service
+                .enqueue_receipt_generation(order_id, &event.id, Some(order.user_id))
+                .await?;
+            (Some(job.id), vec![published_event_type])
         } else {
-            None
+            (None, Vec::new())
         };
 
         Ok(PaymentWebhookAcceptedResponse {
             accepted: true,
-            workflow_id,
+            job_id,
+            published_event_types,
             status: Some(payment_status),
         })
     }
@@ -319,8 +330,9 @@ impl PaymentService {
             }
         }
 
-        let timestamp = timestamp
-            .ok_or_else(|| AppError::Unauthorized("stripe signature timestamp is missing".into()))?;
+        let timestamp = timestamp.ok_or_else(|| {
+            AppError::Unauthorized("stripe signature timestamp is missing".into())
+        })?;
         let signature_hash =
             v1.ok_or_else(|| AppError::Unauthorized("stripe signature hash is missing".into()))?;
 

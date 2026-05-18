@@ -6,8 +6,16 @@ use rust_api_starter::{
     config::settings::Settings,
     db::pool::create_pool,
     logging,
-    modules::jobs::{repository::JobRepository, service::WorkerJobService},
+    modules::{
+        events::{repository::EventRepository, service::EventService},
+        jobs::{repository::JobRepository, service::WorkerJobService},
+        orders::repository::OrderRepository,
+        receipts::{repository::ReceiptRepository, service::ReceiptService},
+        uploads::repository::UploadRepository,
+        users::repository::UserRepository,
+    },
     shared::queue::{QueueJobMessage, RabbitMqClient},
+    shared::{email::EmailService, file_storage::LocalFileStorage},
 };
 
 #[actix_web::main]
@@ -32,9 +40,20 @@ async fn main() -> io::Result<()> {
     )
     .await
     .map_err(io::Error::other)?;
+    let receipt_service = ReceiptService::new(
+        settings.clone(),
+        ReceiptRepository::new(pool.clone()),
+        OrderRepository::new(pool.clone()),
+        UploadRepository::new(pool.clone()),
+        UserRepository::new(pool.clone()),
+        EmailService::new(&settings),
+        EventService::new(&settings, EventRepository::new(pool.clone())),
+        LocalFileStorage::new(settings.upload_dir.clone().into()),
+    );
     let service = WorkerJobService::new(
         JobRepository::new(pool),
         queue.clone(),
+        receipt_service,
         settings.job_max_retries,
     );
 

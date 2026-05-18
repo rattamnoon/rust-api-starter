@@ -37,7 +37,10 @@ impl ProductService {
         ProductResponse::from_model(self.repository.create(&request).await?)
     }
 
-    pub async fn list_products(&self, query: ProductQuery) -> Result<ProductsListResponse, AppError> {
+    pub async fn list_products(
+        &self,
+        query: ProductQuery,
+    ) -> Result<ProductsListResponse, AppError> {
         let page = query.page.max(1);
         let limit = query.limit.clamp(1, 100);
         let items = self

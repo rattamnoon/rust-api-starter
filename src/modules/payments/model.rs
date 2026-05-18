@@ -60,18 +60,3 @@ pub struct Payment {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
-
-#[derive(Debug, Clone, FromRow)]
-pub struct WorkflowRun {
-    pub id: Uuid,
-    pub order_id: Uuid,
-    pub workflow_id: String,
-    pub namespace: String,
-    pub task_queue: String,
-    pub status: String,
-    pub last_error: Option<String>,
-    pub started_at: Option<DateTime<Utc>>,
-    pub finished_at: Option<DateTime<Utc>>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}

@@ -19,6 +19,7 @@ services:
       - cargo-target:/app/target
       - ./logs:/app/logs
       - ./uploads:/app/uploads
+
   worker:
     build:
       context: .
@@ -28,6 +29,27 @@ services:
     command: >
       cargo watch
       -x 'run --bin worker'
+    environment:
+      LOG_DIR: /app/logs
+      UPLOAD_DIR: /app/uploads
+      RUST_LOG: debug,actix_web=info
+    volumes:
+      - .:/app
+      - cargo-registry:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+      - cargo-target:/app/target
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+
+  publisher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    restart: "no"
+    command: >
+      cargo watch
+      -x 'run --bin publisher'
     environment:
       LOG_DIR: /app/logs
       UPLOAD_DIR: /app/uploads

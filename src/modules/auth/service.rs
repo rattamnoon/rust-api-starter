@@ -8,6 +8,7 @@ use crate::{
             dto::{AuthResponse, LoginRequest, RefreshTokenRequest, RegisterRequest},
             repository::AuthRepository,
         },
+        events::service::EventService,
         jobs::service::JobService,
         users::dto::UserResponse,
     },
@@ -22,6 +23,7 @@ use crate::{
 #[derive(Clone)]
 pub struct AuthService {
     repository: AuthRepository,
+    event_service: EventService,
     job_service: JobService,
     password_service: PasswordService,
     jwt_service: JwtService,
@@ -30,12 +32,14 @@ pub struct AuthService {
 impl AuthService {
     pub fn new(
         repository: AuthRepository,
+        event_service: EventService,
         job_service: JobService,
         password_service: PasswordService,
         jwt_service: JwtService,
     ) -> Self {
         Self {
             repository,
+            event_service,
             job_service,
             password_service,
             jwt_service,
@@ -67,6 +71,7 @@ impl AuthService {
             .job_service
             .enqueue_welcome_email(&user, Some(user.id))
             .await?;
+        let _ = self.event_service.record_user_registered(&user).await?;
 
         self.issue_tokens(user).await
     }

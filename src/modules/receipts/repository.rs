@@ -1,9 +1,7 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::modules::receipts::{
-    model::{EmailDelivery, Receipt, ReceiptStatus},
-};
+use crate::modules::receipts::model::{EmailDelivery, Receipt, ReceiptStatus};
 
 #[derive(Clone)]
 pub struct ReceiptRepository {

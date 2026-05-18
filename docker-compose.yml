@@ -16,11 +16,25 @@ services:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/%2f
       RABBITMQ_QUEUE_NAME: jobs
       RABBITMQ_DEAD_LETTER_QUEUE: jobs.dead
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: rust-api-starter
+      KAFKA_TOPIC_USERS: users.events
+      KAFKA_TOPIC_ORDERS: orders.events
+      KAFKA_TOPIC_RECEIPTS: receipts.events
       WORKER_CONCURRENCY: "8"
       JOB_MAX_RETRIES: "3"
       JWT_SECRET: change-me-to-a-long-random-secret
       JWT_EXPIRES_IN: "900"
       JWT_REFRESH_EXPIRES_IN: "604800"
+      PUBLIC_BASE_URL: http://127.0.0.1:8080
+      STRIPE_SECRET_KEY: ""
+      STRIPE_WEBHOOK_SECRET: local-stripe-webhook-secret
+      STRIPE_SUCCESS_URL: http://127.0.0.1:8080/api/v1/orders/success
+      STRIPE_CANCEL_URL: http://127.0.0.1:8080/api/v1/orders/cancel
+      EMAIL_PROVIDER: log
+      EMAIL_FROM: noreply@example.com
+      RESEND_API_KEY: ""
+      RECEIPT_PREFIX: RCT
       LOG_DIR: /app/logs
       UPLOAD_DIR: /app/uploads
       RATE_LIMIT_REQUESTS: "60"
@@ -54,11 +68,25 @@ services:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/%2f
       RABBITMQ_QUEUE_NAME: jobs
       RABBITMQ_DEAD_LETTER_QUEUE: jobs.dead
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: rust-api-starter-worker
+      KAFKA_TOPIC_USERS: users.events
+      KAFKA_TOPIC_ORDERS: orders.events
+      KAFKA_TOPIC_RECEIPTS: receipts.events
       WORKER_CONCURRENCY: "8"
       JOB_MAX_RETRIES: "3"
       JWT_SECRET: change-me-to-a-long-random-secret
       JWT_EXPIRES_IN: "900"
       JWT_REFRESH_EXPIRES_IN: "604800"
+      PUBLIC_BASE_URL: http://127.0.0.1:8080
+      STRIPE_SECRET_KEY: ""
+      STRIPE_WEBHOOK_SECRET: local-stripe-webhook-secret
+      STRIPE_SUCCESS_URL: http://127.0.0.1:8080/api/v1/orders/success
+      STRIPE_CANCEL_URL: http://127.0.0.1:8080/api/v1/orders/cancel
+      EMAIL_PROVIDER: log
+      EMAIL_FROM: noreply@example.com
+      RESEND_API_KEY: ""
+      RECEIPT_PREFIX: RCT
       LOG_DIR: /app/logs
       UPLOAD_DIR: /app/uploads
       RATE_LIMIT_REQUESTS: "60"
@@ -69,6 +97,56 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./uploads:/app/uploads
+    healthcheck:
+      disable: true
+
+  publisher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["./publisher"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/app
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/%2f
+      RABBITMQ_QUEUE_NAME: jobs
+      RABBITMQ_DEAD_LETTER_QUEUE: jobs.dead
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: rust-api-starter-publisher
+      KAFKA_TOPIC_USERS: users.events
+      KAFKA_TOPIC_ORDERS: orders.events
+      KAFKA_TOPIC_RECEIPTS: receipts.events
+      WORKER_CONCURRENCY: "8"
+      JOB_MAX_RETRIES: "3"
+      JWT_SECRET: change-me-to-a-long-random-secret
+      JWT_EXPIRES_IN: "900"
+      JWT_REFRESH_EXPIRES_IN: "604800"
+      PUBLIC_BASE_URL: http://127.0.0.1:8080
+      STRIPE_SECRET_KEY: ""
+      STRIPE_WEBHOOK_SECRET: local-stripe-webhook-secret
+      STRIPE_SUCCESS_URL: http://127.0.0.1:8080/api/v1/orders/success
+      STRIPE_CANCEL_URL: http://127.0.0.1:8080/api/v1/orders/cancel
+      EMAIL_PROVIDER: log
+      EMAIL_FROM: noreply@example.com
+      RESEND_API_KEY: ""
+      RECEIPT_PREFIX: RCT
+      LOG_DIR: /app/logs
+      UPLOAD_DIR: /app/uploads
+      RATE_LIMIT_REQUESTS: "60"
+      RATE_LIMIT_WINDOW_SECONDS: "60"
+      RUST_LOG: info,actix_web=info
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: "8080"
+    volumes:
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+    healthcheck:
+      disable: true
 
   nginx:
     image: nginx:1.29-alpine
@@ -92,6 +170,42 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+
+  kafka:
+    image: apache/kafka:3.9.1
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9092:9092"
+    environment:
+      CLUSTER_ID: 4L6g3nShT-eMCtK--X86sw
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_started
+    ports:
+      - "127.0.0.1:8081:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
 
   postgres:
     image: postgres:18-alpine
@@ -134,8 +248,6 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: admin
     volumes:
       - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
-      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
 
 volumes:
   pgdata:

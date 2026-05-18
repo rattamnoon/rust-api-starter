@@ -14,13 +14,14 @@ use crate::{
             model::JobPayload,
             repository::{JobRepository, NewJob},
         },
+        receipts::service::ReceiptService,
         uploads::model::UploadedFile,
         users::model::User,
     },
     shared::{
         extractor::AuthenticatedUser,
         metrics,
-        queue::{QueueJobMessage, RabbitMqClient},
+        queue::{QueueJobMessage, QueueJobType, RabbitMqClient},
         types::UserRole,
     },
 };
@@ -36,6 +37,7 @@ pub struct JobService {
 pub struct WorkerJobService {
     repository: JobRepository,
     queue: RabbitMqClient,
+    receipt_service: ReceiptService,
     max_retries: i32,
 }
 
@@ -73,6 +75,22 @@ impl JobService {
             storage_path: file.storage_path.clone(),
         };
         self.enqueue(payload, Some(file.uploaded_by)).await
+    }
+
+    pub async fn enqueue_receipt_generation(
+        &self,
+        order_id: Uuid,
+        external_event_id: &str,
+        created_by: Option<Uuid>,
+    ) -> Result<JobResponse, AppError> {
+        self.enqueue(
+            JobPayload::GenerateReceiptPdf {
+                order_id,
+                external_event_id: external_event_id.to_string(),
+            },
+            created_by,
+        )
+        .await
     }
 
     pub async fn list_jobs(
@@ -212,10 +230,16 @@ impl JobService {
 }
 
 impl WorkerJobService {
-    pub fn new(repository: JobRepository, queue: RabbitMqClient, max_retries: i32) -> Self {
+    pub fn new(
+        repository: JobRepository,
+        queue: RabbitMqClient,
+        receipt_service: ReceiptService,
+        max_retries: i32,
+    ) -> Self {
         Self {
             repository,
             queue,
+            receipt_service,
             max_retries,
         }
     }
@@ -237,7 +261,7 @@ impl WorkerJobService {
         metrics::record_job_consumed(&job.job_type);
         metrics::job_started(&job.job_type);
 
-        let result = execute_payload(&payload).await;
+        let result = self.execute_payload(&payload).await;
         let processing_seconds = started_at.elapsed().as_secs_f64();
         metrics::job_finished(&job.job_type);
 
@@ -276,26 +300,68 @@ impl WorkerJobService {
     }
 }
 
-async fn execute_payload(payload: &JobPayload) -> Result<(), AppError> {
-    match payload {
-        JobPayload::SendWelcomeEmail { email, name, .. } => {
-            tracing::info!("processed welcome email job for {name} <{email}>");
-            Ok(())
-        }
-        JobPayload::ProcessUploadedFile {
-            upload_id,
-            storage_path,
-            ..
-        } => {
-            tokio::fs::metadata(storage_path)
-                .await
-                .map_err(AppError::from)?;
-            tracing::info!("processed uploaded file job for upload {upload_id}");
-            Ok(())
-        }
-        JobPayload::RetryWebhook { target_url, reason } => {
-            tracing::info!("processed retry webhook placeholder for {target_url}: {reason}");
-            Ok(())
+impl WorkerJobService {
+    async fn execute_payload(&self, payload: &JobPayload) -> Result<(), AppError> {
+        match payload {
+            JobPayload::SendWelcomeEmail { email, name, .. } => {
+                tracing::info!("processed welcome email job for {name} <{email}>");
+                Ok(())
+            }
+            JobPayload::ProcessUploadedFile {
+                upload_id,
+                storage_path,
+                ..
+            } => {
+                tokio::fs::metadata(storage_path)
+                    .await
+                    .map_err(AppError::from)?;
+                tracing::info!("processed uploaded file job for upload {upload_id}");
+                Ok(())
+            }
+            JobPayload::GenerateReceiptPdf {
+                order_id,
+                external_event_id,
+            } => {
+                let receipt = self
+                    .receipt_service
+                    .generate_receipt_pdf(*order_id, external_event_id)
+                    .await?;
+
+                let job = self
+                    .repository
+                    .create(NewJob {
+                        job_type: QueueJobType::SendReceiptEmail.as_str().to_string(),
+                        payload_summary: JobPayload::SendReceiptEmail {
+                            receipt_id: receipt.id,
+                        }
+                        .summary(),
+                        payload: JobPayload::SendReceiptEmail {
+                            receipt_id: receipt.id,
+                        },
+                        max_attempts: self.max_retries,
+                        created_by: None,
+                    })
+                    .await?;
+                self.queue
+                    .publish_job(&QueueJobMessage {
+                        job_id: job.id,
+                        job_type: QueueJobType::SendReceiptEmail,
+                        attempt: 1,
+                        created_at: Utc::now(),
+                        trace_id: None,
+                    })
+                    .await?;
+                metrics::record_job_published(QueueJobType::SendReceiptEmail.as_str());
+                Ok(())
+            }
+            JobPayload::SendReceiptEmail { receipt_id } => {
+                let _receipt = self.receipt_service.send_receipt_email(*receipt_id).await?;
+                Ok(())
+            }
+            JobPayload::RetryWebhook { target_url, reason } => {
+                tracing::info!("processed retry webhook placeholder for {target_url}: {reason}");
+                Ok(())
+            }
         }
     }
 }
@@ -304,6 +370,8 @@ fn parse_job_type(value: &str) -> Result<crate::shared::queue::QueueJobType, App
     match value {
         "send_welcome_email" => Ok(crate::shared::queue::QueueJobType::SendWelcomeEmail),
         "process_uploaded_file" => Ok(crate::shared::queue::QueueJobType::ProcessUploadedFile),
+        "generate_receipt_pdf" => Ok(crate::shared::queue::QueueJobType::GenerateReceiptPdf),
+        "send_receipt_email" => Ok(crate::shared::queue::QueueJobType::SendReceiptEmail),
         "retry_webhook" => Ok(crate::shared::queue::QueueJobType::RetryWebhook),
         _ => Err(AppError::Internal(format!("unsupported job type: {value}"))),
     }

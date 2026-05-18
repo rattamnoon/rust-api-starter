@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod events;
 pub mod jobs;
 pub mod orders;
 pub mod payments;

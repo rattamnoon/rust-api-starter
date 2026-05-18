@@ -45,7 +45,10 @@ pub async fn list_products(
     state: web::Data<AppState>,
     query: web::Query<ProductQuery>,
 ) -> Result<HttpResponse, AppError> {
-    let response = state.product_service.list_products(query.into_inner()).await?;
+    let response = state
+        .product_service
+        .list_products(query.into_inner())
+        .await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -63,7 +66,10 @@ pub async fn get_product(
     state: web::Data<AppState>,
     product_id: web::Path<Uuid>,
 ) -> Result<HttpResponse, AppError> {
-    let response = state.product_service.get_product(product_id.into_inner()).await?;
+    let response = state
+        .product_service
+        .get_product(product_id.into_inner())
+        .await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -90,7 +96,11 @@ pub async fn update_product(
     request.validate()?;
     let response = state
         .product_service
-        .update_product(&current_user.0, product_id.into_inner(), request.into_inner())
+        .update_product(
+            &current_user.0,
+            product_id.into_inner(),
+            request.into_inner(),
+        )
         .await?;
     Ok(HttpResponse::Ok().json(response))
 }

@@ -55,10 +55,7 @@ pub async fn get_receipt_pdf(
         .receipt_service
         .get_pdf_upload_id(&current_user.0, receipt_id.into_inner())
         .await?;
-    let upload = state
-        .upload_service
-        .find_by_id(upload_id)
-        .await?;
+    let upload = state.upload_service.find_by_id(upload_id).await?;
     let named_file = NamedFile::open_async(&upload.storage_path)
         .await
         .map_err(|_| AppError::NotFound("receipt PDF was not found".into()))?

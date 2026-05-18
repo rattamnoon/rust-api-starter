@@ -18,7 +18,7 @@ The backend previously had auth, uploads, and background jobs, but no transactio
 - `orders`
 - `payments`
 - `receipts`
-- shared email, PDF, and workflow orchestration helpers
+- shared email, PDF, Kafka outbox, and RabbitMQ job helpers
 
 ## Backward Compatibility
 Existing auth, upload, user, and job flows remain in place. New config is required only when enabling real Stripe or Resend integration.

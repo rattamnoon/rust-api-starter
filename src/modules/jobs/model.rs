@@ -66,6 +66,13 @@ pub enum JobPayload {
         original_filename: String,
         storage_path: String,
     },
+    GenerateReceiptPdf {
+        order_id: Uuid,
+        external_event_id: String,
+    },
+    SendReceiptEmail {
+        receipt_id: Uuid,
+    },
     RetryWebhook {
         target_url: String,
         reason: String,
@@ -77,6 +84,8 @@ impl JobPayload {
         match self {
             Self::SendWelcomeEmail { .. } => QueueJobType::SendWelcomeEmail,
             Self::ProcessUploadedFile { .. } => QueueJobType::ProcessUploadedFile,
+            Self::GenerateReceiptPdf { .. } => QueueJobType::GenerateReceiptPdf,
+            Self::SendReceiptEmail { .. } => QueueJobType::SendReceiptEmail,
             Self::RetryWebhook { .. } => QueueJobType::RetryWebhook,
         }
     }
@@ -89,6 +98,12 @@ impl JobPayload {
                 original_filename,
                 ..
             } => format!("process file {original_filename} in {sub_folder}"),
+            Self::GenerateReceiptPdf { order_id, .. } => {
+                format!("generate receipt pdf for order {order_id}")
+            }
+            Self::SendReceiptEmail { receipt_id } => {
+                format!("send receipt email for receipt {receipt_id}")
+            }
             Self::RetryWebhook { target_url, .. } => format!("retry webhook to {target_url}"),
         }
     }

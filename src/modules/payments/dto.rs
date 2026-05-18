@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 use crate::modules::{orders::dto::OrderResponse, payments::model::PaymentStatus};
 
@@ -20,6 +21,7 @@ pub struct CheckoutSessionResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PaymentWebhookAcceptedResponse {
     pub accepted: bool,
-    pub workflow_id: Option<String>,
+    pub job_id: Option<Uuid>,
+    pub published_event_types: Vec<String>,
     pub status: Option<PaymentStatus>,
 }

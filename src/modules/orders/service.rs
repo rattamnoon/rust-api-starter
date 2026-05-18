@@ -3,6 +3,7 @@ use uuid::Uuid;
 use crate::{
     errors::app_error::AppError,
     modules::{
+        events::service::EventService,
         orders::{
             dto::{CreateOrderRequest, OrderQuery, OrderResponse, OrdersListResponse},
             repository::{NewOrderItem, OrderRepository},
@@ -16,13 +17,19 @@ use crate::{
 pub struct OrderService {
     order_repository: OrderRepository,
     product_repository: ProductRepository,
+    event_service: EventService,
 }
 
 impl OrderService {
-    pub fn new(order_repository: OrderRepository, product_repository: ProductRepository) -> Self {
+    pub fn new(
+        order_repository: OrderRepository,
+        product_repository: ProductRepository,
+        event_service: EventService,
+    ) -> Self {
         Self {
             order_repository,
             product_repository,
+            event_service,
         }
     }
 
@@ -53,7 +60,10 @@ impl OrderService {
             .currency()
             .map_err(AppError::Internal)?;
 
-        if products.iter().any(|product| product.currency != currency.as_str()) {
+        if products
+            .iter()
+            .any(|product| product.currency != currency.as_str())
+        {
             return Err(AppError::BadRequest(
                 "all order items must use the same currency".into(),
             ));
@@ -74,6 +84,10 @@ impl OrderService {
             .create(actor.user_id, currency, &new_items)
             .await?;
         let items = self.order_repository.list_items(order.id).await?;
+        let _ = self
+            .event_service
+            .record_order_created(&order, &items)
+            .await?;
         OrderResponse::from_parts(order, items)
     }
 

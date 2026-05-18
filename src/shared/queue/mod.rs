@@ -14,6 +14,8 @@ use crate::errors::app_error::AppError;
 pub enum QueueJobType {
     SendWelcomeEmail,
     ProcessUploadedFile,
+    GenerateReceiptPdf,
+    SendReceiptEmail,
     RetryWebhook,
 }
 
@@ -22,6 +24,8 @@ impl QueueJobType {
         match self {
             Self::SendWelcomeEmail => "send_welcome_email",
             Self::ProcessUploadedFile => "process_uploaded_file",
+            Self::GenerateReceiptPdf => "generate_receipt_pdf",
+            Self::SendReceiptEmail => "send_receipt_email",
             Self::RetryWebhook => "retry_webhook",
         }
     }

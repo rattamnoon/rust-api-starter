@@ -5,6 +5,7 @@ use crate::{
     config::settings::Settings,
     errors::app_error::AppError,
     modules::{
+        events::service::EventService,
         orders::{model::OrderStatus, repository::OrderRepository},
         receipts::{
             dto::ReceiptResponse,
@@ -31,10 +32,12 @@ pub struct ReceiptService {
     upload_repository: UploadRepository,
     user_repository: UserRepository,
     email_service: EmailService,
+    event_service: EventService,
     file_storage: LocalFileStorage,
 }
 
 impl ReceiptService {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         settings: Settings,
         receipt_repository: ReceiptRepository,
@@ -42,6 +45,7 @@ impl ReceiptService {
         upload_repository: UploadRepository,
         user_repository: UserRepository,
         email_service: EmailService,
+        event_service: EventService,
         file_storage: LocalFileStorage,
     ) -> Self {
         Self {
@@ -51,11 +55,12 @@ impl ReceiptService {
             upload_repository,
             user_repository,
             email_service,
+            event_service,
             file_storage,
         }
     }
 
-    pub async fn generate_and_send_receipt(
+    pub async fn generate_receipt_pdf(
         &self,
         order_id: Uuid,
         external_event_id: &str,
@@ -72,13 +77,15 @@ impl ReceiptService {
             ));
         }
 
-        if let Some(existing) = self.receipt_repository.find_by_order_id(order_id).await?
-            && matches!(
-                existing.status().map_err(AppError::Internal)?,
-                ReceiptStatus::Generated | ReceiptStatus::Emailed
-            )
-        {
-            return Ok(existing);
+        if let Some(existing) = self.receipt_repository.find_by_order_id(order_id).await? {
+            let status = existing.status().map_err(AppError::Internal)?;
+            if matches!(
+                status,
+                ReceiptStatus::Generated | ReceiptStatus::Emailed | ReceiptStatus::EmailFailed
+            ) && existing.upload_id.is_some()
+            {
+                return Ok(existing);
+            }
         }
 
         let user = self
@@ -115,7 +122,10 @@ impl ReceiptService {
             order_id: &order.id.to_string(),
             currency: &order.currency,
             total_amount: order.total_amount,
-            payment_reference: order.stripe_payment_intent_id.as_deref().or(Some(external_event_id)),
+            payment_reference: order
+                .stripe_payment_intent_id
+                .as_deref()
+                .or(Some(external_event_id)),
             items: &pdf_items,
         });
 
@@ -141,18 +151,50 @@ impl ReceiptService {
             .receipt_repository
             .mark_generated(receipt.id, uploaded_file.id)
             .await?;
+        let pdf_url = self.pdf_url_by_receipt(&generated_receipt).await?;
+        let _ = self
+            .event_service
+            .record_receipt_generated(&generated_receipt, pdf_url.as_deref())
+            .await?;
 
-        let subject = format!("Receipt {}", generated_receipt.receipt_number);
+        Ok(generated_receipt)
+    }
+
+    pub async fn send_receipt_email(&self, receipt_id: Uuid) -> Result<Receipt, AppError> {
+        let receipt = self
+            .receipt_repository
+            .find_by_id(receipt_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("receipt was not found".into()))?;
+        let order = self
+            .order_repository
+            .find_by_id(receipt.order_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("order was not found".into()))?;
+        let user = self
+            .user_repository
+            .find_by_id(order.user_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("user was not found".into()))?;
+        let upload_id = receipt
+            .upload_id
+            .ok_or_else(|| AppError::NotFound("receipt PDF was not found".into()))?;
+        let upload = self
+            .upload_repository
+            .find_by_id(upload_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("receipt PDF was not found".into()))?;
+        let subject = format!("Receipt {}", receipt.receipt_number);
         let delivery = self
             .receipt_repository
-            .create_email_delivery(generated_receipt.id, &user.email, &subject)
+            .create_email_delivery(receipt.id, &user.email, &subject)
             .await?;
         let email_html = format!(
             "<p>Hello {},</p><p>Your payment was successful.</p><p>Receipt number: <strong>{}</strong></p><p>Download PDF: <a href=\"{}/static/receipts/{}\">receipt PDF</a></p>",
             user.name,
-            generated_receipt.receipt_number,
+            receipt.receipt_number,
             self.settings.public_base_url,
-            stored_filename
+            upload.stored_filename
         );
 
         match self
@@ -174,25 +216,26 @@ impl ReceiptService {
                         None,
                     )
                     .await?;
-                self.receipt_repository
-                    .mark_delivery_status(generated_receipt.id, ReceiptStatus::Emailed)
-                    .await
-                    .map_err(Into::into)
+                let updated = self
+                    .receipt_repository
+                    .mark_delivery_status(receipt.id, ReceiptStatus::Emailed)
+                    .await?;
+                let _ = self
+                    .event_service
+                    .record_receipt_emailed(&updated, &user.email)
+                    .await?;
+                Ok(updated)
             }
             Err(error) => {
                 let _ = self
                     .receipt_repository
-                    .update_email_delivery(
-                        delivery.id,
-                        "failed",
-                        None,
-                        Some(&error.to_string()),
-                    )
+                    .update_email_delivery(delivery.id, "failed", None, Some(&error.to_string()))
                     .await?;
-                let _ = self
+                let updated = self
                     .receipt_repository
-                    .mark_delivery_status(generated_receipt.id, ReceiptStatus::EmailFailed)
+                    .mark_delivery_status(receipt.id, ReceiptStatus::EmailFailed)
                     .await?;
+                let _ = updated;
                 Err(error)
             }
         }
@@ -209,7 +252,7 @@ impl ReceiptService {
             .await?
             .ok_or_else(|| AppError::NotFound("receipt was not found".into()))?;
         self.ensure_access(actor, &receipt).await?;
-        let pdf_url = self.pdf_url(&receipt).await?;
+        let pdf_url = self.pdf_url_by_receipt(&receipt).await?;
         ReceiptResponse::from_model(receipt, pdf_url)
     }
 
@@ -240,18 +283,27 @@ impl ReceiptService {
             .await?
             .ok_or_else(|| AppError::NotFound("receipt was not found".into()))?;
         self.ensure_access(actor, &receipt).await?;
-        self.generate_and_send_receipt(receipt.order_id, "manual-resend")
-            .await?;
+        let receipt = if receipt.upload_id.is_some() {
+            receipt
+        } else {
+            self.generate_receipt_pdf(receipt.order_id, "manual-resend")
+                .await?
+        };
+        self.send_receipt_email(receipt.id).await?;
         let updated = self
             .receipt_repository
             .find_by_id(receipt_id)
             .await?
             .ok_or_else(|| AppError::NotFound("receipt was not found".into()))?;
-        let pdf_url = self.pdf_url(&updated).await?;
+        let pdf_url = self.pdf_url_by_receipt(&updated).await?;
         ReceiptResponse::from_model(updated, pdf_url)
     }
 
-    async fn ensure_access(&self, actor: &AuthenticatedUser, receipt: &Receipt) -> Result<(), AppError> {
+    async fn ensure_access(
+        &self,
+        actor: &AuthenticatedUser,
+        receipt: &Receipt,
+    ) -> Result<(), AppError> {
         let order = self
             .order_repository
             .find_by_id(receipt.order_id)
@@ -266,7 +318,7 @@ impl ReceiptService {
         }
     }
 
-    async fn pdf_url(&self, receipt: &Receipt) -> Result<Option<String>, AppError> {
+    pub async fn pdf_url_by_receipt(&self, receipt: &Receipt) -> Result<Option<String>, AppError> {
         let Some(upload_id) = receipt.upload_id else {
             return Ok(None);
         };

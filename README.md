@@ -5,6 +5,7 @@ Rust backend starter for building web APIs with:
 - SQLx
 - PostgreSQL
 - RabbitMQ
+- Kafka
 - Stripe-ready checkout flow
 - JWT authentication
 - Swagger/OpenAPI
@@ -49,8 +50,11 @@ Included services:
 - `nginx` on `:8080`
 - `app` API
 - `worker` background consumer
+- `publisher` Kafka outbox publisher
 - `postgres`
 - `rabbitmq` with management UI on `127.0.0.1:15672`
+- `kafka` on `127.0.0.1:9092`
+- `kafka-ui` on `127.0.0.1:8081`
 - `prometheus` on `127.0.0.1:9090`
 - `grafana` on `127.0.0.1:3000`
 
@@ -81,7 +85,9 @@ The production stack exposes `nginx` on port `8080` and proxies requests to the 
 - API base: `http://127.0.0.1:8080/api/v1`
 - Swagger UI: `http://127.0.0.1:8080/swagger-ui/`
 - OpenAPI JSON: `http://127.0.0.1:8080/api-doc/openapi.json`
+- Kafka UI: `http://127.0.0.1:8081`
 - Health check: `GET /api/v1/health`
+- Events: `GET /api/v1/events`, `GET /api/v1/events/{id}`
 - Jobs: `GET /api/v1/jobs`, `GET /api/v1/jobs/charts/summary`, `POST /api/v1/jobs/{id}/retry`
 - Products: `GET /api/v1/products`, `POST /api/v1/products`
 - Orders: `POST /api/v1/orders`, `GET /api/v1/orders`, `GET /api/v1/orders/{id}`
@@ -96,6 +102,7 @@ The production stack exposes `nginx` on port `8080` and proxies requests to the 
 cargo fmt
 cargo test
 cargo clippy --all-targets --all-features -- -D warnings
+./scripts/smoke-full-stack.sh
 ```
 
 ## Logging
@@ -116,6 +123,11 @@ Main environment variables are defined in [.env.example](.env.example):
 - `RABBITMQ_URL`
 - `RABBITMQ_QUEUE_NAME`
 - `RABBITMQ_DEAD_LETTER_QUEUE`
+- `KAFKA_BROKERS`
+- `KAFKA_CLIENT_ID`
+- `KAFKA_TOPIC_USERS`
+- `KAFKA_TOPIC_ORDERS`
+- `KAFKA_TOPIC_RECEIPTS`
 - `WORKER_CONCURRENCY`
 - `JOB_MAX_RETRIES`
 - `JWT_SECRET`
@@ -127,9 +139,6 @@ Main environment variables are defined in [.env.example](.env.example):
 - `EMAIL_PROVIDER`
 - `EMAIL_FROM`
 - `RESEND_API_KEY`
-- `TEMPORAL_SERVER_URL`
-- `TEMPORAL_NAMESPACE`
-- `TEMPORAL_TASK_QUEUE`
 - `RECEIPT_PREFIX`
 - `LOG_DIR`
 - `UPLOAD_DIR`
